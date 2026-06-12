@@ -5,21 +5,32 @@ import { prisma } from '@/lib/prisma';
 export const runtime = 'nodejs';
 
 export async function POST(req: Request) {
-  const form = await req.formData();
-  const files = form.getAll('files') as File[];
-  const categoryId = String(form.get('categoryId') || '') || null;
-  const title = String(form.get('title') || '').trim() || null;
+  try {
+    const form = await req.formData();
 
-  if (!files.length) {
-    return NextResponse.json({ error: 'Inga bilder valda.' }, { status: 400 });
-  }
+    const file = form.get('file') as File | null;
+    const categoryIdRaw = String(form.get('categoryId') || '').trim();
+    const titleRaw = String(form.get('title') || '').trim();
 
-  const uploaded = [];
+    const categoryId = categoryIdRaw.length > 0 ? categoryIdRaw : null;
+    const title = titleRaw.length > 0 ? titleRaw : null;
 
-  for (const file of files) {
-    if (!file.type.startsWith('image/')) continue;
+    if (!file) {
+      return NextResponse.json(
+        { error: 'Ingen bild vald.' },
+        { status: 400 }
+      );
+    }
+
+    if (!file.type.startsWith('image/')) {
+      return NextResponse.json(
+        { error: 'Filen måste vara en bild.' },
+        { status: 400 }
+      );
+    }
 
     const safeName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+
     const blob = await put(`images/${Date.now()}-${safeName}`, file, {
       access: 'public',
       addRandomSuffix: true,
@@ -35,11 +46,18 @@ export async function POST(req: Request) {
         title,
         categoryId,
       },
-      include: { category: true },
+      include: {
+        category: true,
+      },
     });
 
-    uploaded.push(image);
-  }
+    return NextResponse.json({ uploaded: [image] });
+  } catch (error) {
+    console.error('Upload error:', error);
 
-  return NextResponse.json({ uploaded });
+    return NextResponse.json(
+      { error: 'Något gick fel vid uppladdning.' },
+      { status: 500 }
+    );
+  }
 }
